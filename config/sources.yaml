@@ -1,0 +1,63 @@
+# Machine-readable catalog of data sources. Never store real passwords here; use .env.
+
+sources:
+  - id: mpc-stac
+    display_name: Microsoft Planetary Computer (STAC)
+    base_url: https://planetarycomputer.microsoft.com/api/stac/v1
+    api_kind: stac
+    auth: none
+    supports: [optical, sar]
+    env_vars: []
+    default_collections_optical:
+      - sentinel-2-l2a
+      - landsat-c2-l2
+    default_collections_sar:
+      - sentinel-1-grd
+    notes: "Anonymous STAC search; some assets may need PC signing (handled via redirect URLs)."
+
+  - id: cdse-odata
+    display_name: Copernicus Data Space Ecosystem (OData)
+    base_url: https://catalogue.dataspace.copernicus.eu/odata/v1
+    api_kind: cdse_odata
+    auth: oauth_password
+    supports: [optical, sar]
+    env_vars:
+      - COPERNICUS_USERNAME
+      - COPERNICUS_PASSWORD
+    token_url: https://identity.dataspace.copernicus.eu/auth/realms/CDSE/protocol/openid-connect/token
+    client_id: cdse-public
+    product_type_optical: S2MSI2A
+    product_type_sar: S1GRD
+    notes: "Requires CDSE account; product types are examples (L2A / GRD)."
+
+  - id: usgs-m2m
+    display_name: USGS Earth Explorer M2M API
+    base_url: https://m2m.cr.usgs.gov/api/api/json/stable
+    api_kind: usgs_m2m
+    auth: basic_login
+    supports: [optical]
+    env_vars:
+      - USGS_M2M_USERNAME
+      - USGS_M2M_PASSWORD
+    default_dataset: landsat_ot_c2_l2
+    notes: "Landsat Collection 2 Level-2; register for M2M access."
+
+  - id: crsda-web
+    display_name: 中国资源卫星数据服务网
+    base_url: http://36.112.130.153:7777/DSSPlatform/index.html
+    api_kind: web_manual
+    auth: unknown
+    supports: [optical]
+    env_vars: []
+    access: web_manual
+    notes: "Web registration and ordering; no stable public API in catalog — manual or future automation."
+
+  - id: gscloud-web
+    display_name: 地理空间数据云
+    base_url: https://www.gscloud.cn/
+    api_kind: web_manual
+    auth: unknown
+    supports: [optical, dem]
+    env_vars: []
+    access: web_manual
+    notes: "Chinese portal; web workflow."

@@ -1,0 +1,36 @@
+[project]
+name = "sate-image-query"
+version = "0.1.0"
+description = "Satellite imagery search and download via STAC, CDSE, and USGS M2M"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+  "pystac-client>=0.7.0",
+  "shapely>=2.0.0",
+  "httpx>=0.27.0",
+  "pyyaml>=6.0",
+  "click>=8.1.0",
+  "python-dotenv>=1.0.0",
+  "planetary-computer>=1.0.0",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=7.0"]
+
+[project.scripts]
+sate-image-query = "sate_image_query.cli:main"
+
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["sate_image_query*"]
+
+[tool.pytest.ini_options]
+addopts = "-m \"not integration and not requires_credentials\""
+markers = [
+  "requires_credentials: needs secrets in environment",
+  "integration: performs network I/O",
+]
