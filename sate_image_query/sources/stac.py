@@ -31,6 +31,19 @@ def _geometry_for_query(q: SearchQuery) -> dict[str, Any]:
     raise ValueError("SearchQuery requires bbox or point")
 
 
+def _spatial_resolution_note(collection_id: str | None) -> str:
+    if not collection_id:
+        return "见 STAC collection 与 item 元数据"
+    c = collection_id.lower()
+    if "sentinel-2" in c or "sentinel2" in c:
+        return "MSI L2A: 10 m / 20 m / 60 m (依波段; 真彩色 TCI 为 10 m)"
+    if "landsat" in c:
+        return "OLI/TIRS C2 L2: 30 m (多光谱/热红外), 15 m (全色 Pan)"
+    if "sentinel-1" in c:
+        return "C-SAR GRD: 地面分辨率依条带模式与产品等级而异"
+    return "见 STAC collection 与 item 元数据"
+
+
 def _collections_for_modality(cfg: dict[str, Any], modality: Modality, override: list[str] | None) -> list[str]:
     if override:
         return override
@@ -106,6 +119,13 @@ class STACSource(DataSource):
                         dt_prop = datetime.fromisoformat(raw.replace("Z", "+00:00"))
                 except Exception:
                     dt_prop = None
+            props = item.properties or {}
+            cc = props.get("eo:cloud_cover")
+            extra: dict[str, Any] = {
+                "stac_href": item.self_href,
+                "cloud_cover_pct": cc,
+                "spatial_resolution": _spatial_resolution_note(item.collection_id),
+            }
             scenes.append(
                 Scene(
                     id=item.id,
@@ -114,7 +134,7 @@ class STACSource(DataSource):
                     datetime=dt_prop,
                     geometry=item.geometry,
                     assets=assets,
-                    extra={"stac_href": item.self_href},
+                    extra=extra,
                 )
             )
         return scenes

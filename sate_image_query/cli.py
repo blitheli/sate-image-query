@@ -4,6 +4,7 @@ import json
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Any
 
 import click
 from dotenv import load_dotenv
@@ -95,16 +96,18 @@ def search_cmd(
     scenes = src.search(q)
     payload = []
     for sc in scenes:
-        payload.append(
-            {
-                "id": sc.id,
-                "collection": sc.collection,
-                "datetime": sc.datetime.isoformat() if sc.datetime else None,
-                "geometry": sc.geometry,
-                "assets": sc.assets,
-                "extra": {k: v for k, v in sc.extra.items() if k != "raw"},
-            }
-        )
+        ex = {k: v for k, v in sc.extra.items() if k != "raw"}
+        row: dict[str, Any] = {
+            "id": sc.id,
+            "collection": sc.collection,
+            "datetime": sc.datetime.isoformat() if sc.datetime else None,
+            "cloud_cover_pct": ex.pop("cloud_cover_pct", None),
+            "spatial_resolution": ex.pop("spatial_resolution", None),
+            "geometry": sc.geometry,
+            "assets": sc.assets,
+            "extra": ex,
+        }
+        payload.append(row)
     text = json.dumps(payload, indent=2, ensure_ascii=False)
     if json_out:
         json_out.write_text(text, encoding="utf-8")
