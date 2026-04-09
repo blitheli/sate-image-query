@@ -8,7 +8,7 @@ from typing import Any
 
 import httpx
 
-from sate_image_query.models import HealthResult, Scene, SearchQuery
+from sate_image_query.models import HealthResult, Modality, Scene, SearchQuery
 from sate_image_query.sources.base import DataSource
 
 
@@ -71,6 +71,54 @@ class USGSSource(DataSource):
             raise RuntimeError(data.get("errorMessage") or str(data))
         return data
 
+    def list_datasets(self) -> dict[str, list[str]]:
+        """Query dataset-search and classify ids into optical / sar buckets."""
+        data = self._post("dataset-search", {})
+        rows = data.get("data") or []
+        optical: list[str] = []
+        sar: list[str] = []
+        for row in rows:
+            ds_id = str(row.get("datasetName") or row.get("datasetAlias") or "").strip()
+            if not ds_id:
+                continue
+            text = " ".join(
+                str(row.get(k, "")).lower()
+                for k in ("datasetName", "datasetAlias", "datasetFullName")
+            )
+            # Heuristic classifier for M2M dataset metadata strings.
+            if any(k in text for k in ("sentinel-1", "radar", "sar", "alos", "palsar")):
+                sar.append(ds_id)
+            if any(
+                k in text
+                for k in (
+                    "landsat",
+                    "sentinel-2",
+                    "modis",
+                    "viirs",
+                    "optical",
+                    "multispectral",
+                )
+            ):
+                optical.append(ds_id)
+        return {"optical": sorted(set(optical)), "sar": sorted(set(sar))}
+
+    def _dataset_for_query(self, query: SearchQuery) -> str:
+        if query.collections and query.collections[0]:
+            return query.collections[0]
+        if query.modality == Modality.SAR:
+            return str(self.config.get("default_dataset_sar") or self.config.get("default_dataset") or "sentinel_1a")
+        if query.modality == Modality.OPTICAL:
+            return str(
+                self.config.get("default_dataset_optical")
+                or self.config.get("default_dataset")
+                or "landsat_ot_c2_l2"
+            )
+        return str(
+            self.config.get("default_dataset_optical")
+            or self.config.get("default_dataset")
+            or "landsat_ot_c2_l2"
+        )
+
     def health_check(self, smoke_search: bool = False) -> HealthResult:
         try:
             _ = self._login()
@@ -79,7 +127,11 @@ class USGSSource(DataSource):
         if not smoke_search:
             return HealthResult(True, "M2M login OK", self.source_id)
         try:
-            ds = self.config.get("default_dataset", "landsat_ot_c2_l2")
+            ds = (
+                self.config.get("default_dataset_optical")
+                or self.config.get("default_dataset")
+                or "landsat_ot_c2_l2"
+            )
             body = {
                 "datasetName": ds,
                 "spatialFilter": _mbr(
@@ -101,9 +153,7 @@ class USGSSource(DataSource):
             return HealthResult(False, str(e), self.source_id)
 
     def search(self, query: SearchQuery) -> list[Scene]:
-        ds = (query.collections and query.collections[0]) or self.config.get(
-            "default_dataset", "landsat_ot_c2_l2"
-        )
+        ds = self._dataset_for_query(query)
         body = {
             "datasetName": ds,
             "spatialFilter": _mbr(query),
@@ -145,7 +195,12 @@ class USGSSource(DataSource):
         entity_id = scene.extra.get("entity_id")
         if not entity_id:
             raise ValueError("Scene missing entity_id; run search from this adapter")
-        dataset = scene.collection or self.config.get("default_dataset", "landsat_ot_c2_l2")
+        dataset = (
+            scene.collection
+            or self.config.get("default_dataset_optical")
+            or self.config.get("default_dataset")
+            or "landsat_ot_c2_l2"
+        )
         api_key = self._login()
         opt_body = {
             "apiKey": api_key,
