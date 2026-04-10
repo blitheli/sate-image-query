@@ -8,3 +8,4 @@ def test_sources_list() -> None:
     r = runner.invoke(main, ["sources-list"])
     assert r.exit_code == 0
     assert "mpc-stac" in r.output
+    assert "aws-earth-search" in r.output
