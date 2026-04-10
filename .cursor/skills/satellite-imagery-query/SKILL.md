@@ -23,6 +23,7 @@ description: 按地点/区域, 时间, 分辨率意图与光学或 SAR 类型查
 | `sources-list` | 列出 `config/sources.yaml` 中的数据源 id |
 | `sources-test --id <id> [--smoke-search]` | 健康检查, `--smoke-search` 会做极小范围查询 (可能更慢) |
 | `search --source mpc-stac --start ... --end ... --bbox min_lon min_lat max_lon max_lat [--modality optical\|sar\|any] [--limit N] [--json-out path]` | STAC 检索, 输出 JSON (含 `assets` 下载链接) |
+| `search --source aws-earth-search ...` | 同上, 使用 [Earth Search](https://earth-search.aws.element84.com/v1) (AWS 上公开数据集的 STAC, 无需凭据) |
 | `download --source mpc-stac --scene-json file.json --dest dir [--assets key1,key2]` | 按 `search` 保存的条目下载资产 |
 
 ### 示例 (Planetary Computer STAC, 通常无需凭据)
@@ -34,6 +35,8 @@ python3 -m sate_image_query search --source mpc-stac \
 ```
 
 Copernicus CDSE 与 USGS M2M 需在 `.env` 中配置 `COPERNICUS_*` 或 `USGS_M2M_*` 后使用 `--source cdse-odata` 或 `--source usgs-m2m`.
+
+`aws-earth-search` 与 `mpc-stac` 一样为匿名 STAC; 适合需要与 AWS 上 Landsat / Sentinel-2 等公开桶对齐的检索 (更新通常较快, 具体以各数据集说明为准). 个别资产桶若启用 Requester Pays, 下载时可能需要自行配置 AWS 凭证与计费, 本 CLI 的 `download` 仍按 URL 直连处理.
 
 ## 对用户提醒
 

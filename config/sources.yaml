@@ -15,6 +15,22 @@ sources:
       - sentinel-1-grd
     notes: "Anonymous STAC search; some assets may need PC signing (handled via redirect URLs)."
 
+  - id: aws-earth-search
+    display_name: Earth Search (AWS public datasets, STAC)
+    base_url: https://earth-search.aws.element84.com/v1
+    api_kind: stac
+    auth: none
+    supports: [optical, sar, dem]
+    env_vars: []
+    default_collections_optical:
+      - sentinel-2-l2a
+      - landsat-c2-l2
+    default_collections_sar:
+      - sentinel-1-grd
+    default_collections_dem:
+      - cop-dem-glo-30
+    notes: "STAC API for datasets hosted on AWS (e.g. Sentinel-2, Landsat C2 L2, S1 GRD); assets are typically s3:// or HTTPS without Planetary Computer signing."
+
   - id: cdse-odata
     display_name: Copernicus Data Space Ecosystem (OData)
     base_url: https://catalogue.dataspace.copernicus.eu/odata/v1
