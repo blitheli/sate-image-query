@@ -39,9 +39,10 @@ sources:
     env_vars:
       - USGS_M2M_USERNAME
       - USGS_M2M_PASSWORD
+      - USGS_M2M_APPLICATION_TOKEN
     default_dataset_optical: landsat_ot_c2_l2
     default_dataset_sar: sentinel_1a
-    notes: "Landsat Collection 2 Level-2; register for M2M access."
+    notes: "Use USGS Application Token + login-token (password login deprecated per USGS). See .env.example."
 
   - id: crsda-web
     display_name: 中国资源卫星数据服务网

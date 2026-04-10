@@ -8,7 +8,7 @@
 
 ## 前置说明
 
-- USGS M2M 需要先在官网注册账号: https://ers.cr.usgs.gov/register
+- USGS M2M 需要先在官网注册账号: [https://ers.cr.usgs.gov/register](https://ers.cr.usgs.gov/register)
 - 本仓库通过 `.env` 读取凭据, 请先复制 `.env.example` 为 `.env`, 并填写:
   - `USGS_M2M_USERNAME=...`
   - `USGS_M2M_PASSWORD=...`
@@ -111,3 +111,4 @@ python3 -m sate_image_query search \
 
 - 代码路径和无凭据失败路径已验证.
 - 若要完成在线查询并将 `optical/sar` 可用 dataset 自动回写配置, 需在 `.env` 提供 USGS 账号后重跑步骤 3-5.
+
