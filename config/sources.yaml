@@ -35,12 +35,14 @@ sources:
     base_url: https://m2m.cr.usgs.gov/api/api/json/stable
     api_kind: usgs_m2m
     auth: basic_login
-    supports: [optical]
+    supports: [optical, sar]
     env_vars:
       - USGS_M2M_USERNAME
       - USGS_M2M_PASSWORD
-    default_dataset: landsat_ot_c2_l2
-    notes: "Landsat Collection 2 Level-2; register for M2M access."
+      - USGS_M2M_APPLICATION_TOKEN
+    default_dataset_optical: landsat_ot_c2_l2
+    default_dataset_sar: sentinel_1a
+    notes: "Use USGS Application Token + login-token (password login deprecated per USGS). See .env.example."
 
   - id: crsda-web
     display_name: 中国资源卫星数据服务网

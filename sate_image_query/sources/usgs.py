@@ -8,7 +8,7 @@ from typing import Any
 
 import httpx
 
-from sate_image_query.models import HealthResult, Scene, SearchQuery
+from sate_image_query.models import HealthResult, Modality, Scene, SearchQuery
 from sate_image_query.sources.base import DataSource
 
 
@@ -47,11 +47,51 @@ class USGSSource(DataSource):
 
         user = os.environ.get("USGS_M2M_USERNAME")
         pwd = os.environ.get("USGS_M2M_PASSWORD")
-        if not user or not pwd:
-            raise RuntimeError("Set USGS_M2M_USERNAME and USGS_M2M_PASSWORD")
-        url = f"{self._base}/login"
-        r = httpx.post(url, json={"username": user, "password": pwd}, timeout=60.0)
+        app_token = os.environ.get("USGS_M2M_APPLICATION_TOKEN")
+        headers = {"Accept": "application/json", "Content-Type": "application/json"}
+        if app_token:
+            if not user:
+                raise RuntimeError("Set USGS_M2M_USERNAME together with USGS_M2M_APPLICATION_TOKEN")
+            url = f"{self._base}/login-token"
+            r = httpx.post(
+                url,
+                json={"username": user, "token": app_token},
+                timeout=60.0,
+                headers=headers,
+                follow_redirects=False,
+            )
+        else:
+            if not user or not pwd:
+                raise RuntimeError(
+                    "Set USGS_M2M_USERNAME and USGS_M2M_PASSWORD, or USGS_M2M_APPLICATION_TOKEN (+ username). "
+                    "USGS recommends Application Token instead of password (see M2M Application Token documentation)."
+                )
+            url = f"{self._base}/login"
+            r = httpx.post(
+                url,
+                json={"username": user, "password": pwd},
+                timeout=60.0,
+                headers=headers,
+                follow_redirects=False,
+            )
+        if r.status_code == 404:
+            raise RuntimeError(
+                f"USGS M2M endpoint not found (404): {url}. "
+                "Confirm base_url is https://m2m.cr.usgs.gov/api/api/stable/json"
+            )
+        if r.status_code in (301, 302, 303, 307, 308):
+            loc = r.headers.get("location", "")
+            raise RuntimeError(
+                "USGS M2M returned redirect instead of JSON (browser SSO). "
+                "Password login may be disabled; create an Application Token in ERS and set USGS_M2M_APPLICATION_TOKEN. "
+                f"Location: {loc[:240]}"
+            )
         r.raise_for_status()
+        ct = (r.headers.get("content-type") or "").lower()
+        if "text/html" in ct:
+            raise RuntimeError(
+                "USGS M2M login returned HTML instead of JSON. Use USGS_M2M_APPLICATION_TOKEN with login-token."
+            )
         data = r.json()
         if data.get("errorCode") and data.get("errorCode") != "NONE":
             raise RuntimeError(data.get("errorMessage") or str(data))
@@ -64,12 +104,68 @@ class USGSSource(DataSource):
         api_key = self._login()
         payload = {"apiKey": api_key, **body}
         url = f"{self._base}/{endpoint}"
-        r = httpx.post(url, json=payload, timeout=120.0)
+        headers = {"Accept": "application/json", "Content-Type": "application/json"}
+        r = httpx.post(url, json=payload, timeout=120.0, headers=headers, follow_redirects=False)
+        if r.status_code in (301, 302, 303, 307, 308):
+            raise RuntimeError(
+                f"USGS M2M API redirect on {endpoint} — session may be invalid; check Application Token or M2M access."
+            )
         r.raise_for_status()
+        ct = (r.headers.get("content-type") or "").lower()
+        if "text/html" in ct:
+            raise RuntimeError(f"USGS M2M returned HTML instead of JSON for {endpoint}")
         data = r.json()
         if data.get("errorCode") and data.get("errorCode") != "NONE":
             raise RuntimeError(data.get("errorMessage") or str(data))
         return data
+
+    def list_datasets(self) -> dict[str, list[str]]:
+        """Query dataset-search and classify ids into optical / sar buckets."""
+        data = self._post("dataset-search", {})
+        rows = data.get("data") or []
+        optical: list[str] = []
+        sar: list[str] = []
+        for row in rows:
+            ds_id = str(row.get("datasetName") or row.get("datasetAlias") or "").strip()
+            if not ds_id:
+                continue
+            text = " ".join(
+                str(row.get(k, "")).lower()
+                for k in ("datasetName", "datasetAlias", "datasetFullName")
+            )
+            # Heuristic classifier for M2M dataset metadata strings.
+            if any(k in text for k in ("sentinel-1", "radar", "sar", "alos", "palsar")):
+                sar.append(ds_id)
+            if any(
+                k in text
+                for k in (
+                    "landsat",
+                    "sentinel-2",
+                    "modis",
+                    "viirs",
+                    "optical",
+                    "multispectral",
+                )
+            ):
+                optical.append(ds_id)
+        return {"optical": sorted(set(optical)), "sar": sorted(set(sar))}
+
+    def _dataset_for_query(self, query: SearchQuery) -> str:
+        if query.collections and query.collections[0]:
+            return query.collections[0]
+        if query.modality == Modality.SAR:
+            return str(self.config.get("default_dataset_sar") or self.config.get("default_dataset") or "sentinel_1a")
+        if query.modality == Modality.OPTICAL:
+            return str(
+                self.config.get("default_dataset_optical")
+                or self.config.get("default_dataset")
+                or "landsat_ot_c2_l2"
+            )
+        return str(
+            self.config.get("default_dataset_optical")
+            or self.config.get("default_dataset")
+            or "landsat_ot_c2_l2"
+        )
 
     def health_check(self, smoke_search: bool = False) -> HealthResult:
         try:
@@ -79,7 +175,11 @@ class USGSSource(DataSource):
         if not smoke_search:
             return HealthResult(True, "M2M login OK", self.source_id)
         try:
-            ds = self.config.get("default_dataset", "landsat_ot_c2_l2")
+            ds = (
+                self.config.get("default_dataset_optical")
+                or self.config.get("default_dataset")
+                or "landsat_ot_c2_l2"
+            )
             body = {
                 "datasetName": ds,
                 "spatialFilter": _mbr(
@@ -101,9 +201,7 @@ class USGSSource(DataSource):
             return HealthResult(False, str(e), self.source_id)
 
     def search(self, query: SearchQuery) -> list[Scene]:
-        ds = (query.collections and query.collections[0]) or self.config.get(
-            "default_dataset", "landsat_ot_c2_l2"
-        )
+        ds = self._dataset_for_query(query)
         body = {
             "datasetName": ds,
             "spatialFilter": _mbr(query),
@@ -145,7 +243,12 @@ class USGSSource(DataSource):
         entity_id = scene.extra.get("entity_id")
         if not entity_id:
             raise ValueError("Scene missing entity_id; run search from this adapter")
-        dataset = scene.collection or self.config.get("default_dataset", "landsat_ot_c2_l2")
+        dataset = (
+            scene.collection
+            or self.config.get("default_dataset_optical")
+            or self.config.get("default_dataset")
+            or "landsat_ot_c2_l2"
+        )
         api_key = self._login()
         opt_body = {
             "apiKey": api_key,
@@ -154,7 +257,8 @@ class USGSSource(DataSource):
             "products": ["STANDARD"],
         }
         url = f"{self._base}/download-options"
-        r = httpx.post(url, json=opt_body, timeout=120.0)
+        hdr = {"Accept": "application/json", "Content-Type": "application/json"}
+        r = httpx.post(url, json=opt_body, timeout=120.0, headers=hdr, follow_redirects=False)
         r.raise_for_status()
         opt_data = r.json()
         if opt_data.get("errorCode") and opt_data.get("errorCode") != "NONE":
@@ -175,7 +279,13 @@ class USGSSource(DataSource):
             ],
             "label": f"sate-image-query-{entity_id}",
         }
-        dr = httpx.post(f"{self._base}/download-request", json=req_body, timeout=120.0)
+        dr = httpx.post(
+            f"{self._base}/download-request",
+            json=req_body,
+            timeout=120.0,
+            headers=hdr,
+            follow_redirects=False,
+        )
         dr.raise_for_status()
         dr_js = dr.json()
         if dr_js.get("errorCode") and dr_js.get("errorCode") != "NONE":
@@ -194,6 +304,8 @@ class USGSSource(DataSource):
                 f"{self._base}/download-retrieve",
                 json={"apiKey": api_key, "downloadId": download_id},
                 timeout=120.0,
+                headers=hdr,
+                follow_redirects=False,
             )
             rr.raise_for_status()
             rj = rr.json()

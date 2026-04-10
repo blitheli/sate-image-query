@@ -12,6 +12,7 @@ from dotenv import load_dotenv
 from sate_image_query.catalog import get_source_by_id, load_sources_config
 from sate_image_query.models import Modality, SearchQuery
 from sate_image_query.sources import create_source
+from sate_image_query.sources.usgs import USGSSource
 
 
 def _parse_dt(s: str) -> datetime:
@@ -48,6 +49,41 @@ def sources_test(source_id: str, smoke_search: bool, config_path: Path | None) -
     hr = src.health_check(smoke_search=smoke_search)
     click.echo(f"ok={hr.ok}\t{hr.message}")
     sys.exit(0 if hr.ok else 1)
+
+
+@main.command("sources-sync-usgs")
+@click.option("--id", "source_id", default="usgs-m2m", show_default=True)
+@click.option(
+    "--config",
+    "config_path",
+    type=click.Path(path_type=Path),
+    default=None,
+    help="sources.yaml path to read and update",
+)
+@click.option("--dry-run", is_flag=True, help="Only print inferred datasets, do not write file")
+def sources_sync_usgs(source_id: str, config_path: Path | None, dry_run: bool) -> None:
+    data = load_sources_config(config_path)
+    cfg = get_source_by_id(data, source_id)
+    src = create_source(source_id, cfg)
+    if not isinstance(src, USGSSource):
+        raise click.ClickException(f"{source_id} is not a usgs_m2m source")
+    buckets = src.list_datasets()
+    optical = buckets.get("optical", [])
+    sar = buckets.get("sar", [])
+    click.echo(json.dumps({"optical": optical, "sar": sar}, ensure_ascii=False, indent=2))
+    if dry_run:
+        return
+    if optical:
+        cfg["default_dataset_optical"] = optical[0]
+    if sar:
+        cfg["default_dataset_sar"] = sar[0]
+    cfg["supports"] = sorted(set(cfg.get("supports") or []) | {"optical", "sar"})
+    if config_path is None:
+        config_path = Path(__file__).resolve().parent.parent / "config" / "sources.yaml"
+    import yaml
+
+    config_path.write_text(yaml.safe_dump(data, sort_keys=False, allow_unicode=True), encoding="utf-8")
+    click.echo(str(config_path))
 
 
 @main.command("search")
